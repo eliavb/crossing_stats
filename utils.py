@@ -12,12 +12,12 @@ def get_rect_from_tracker(tracker):
       int(pos.left()), int(pos.top()), int(pos.right()), int(pos.bottom()))
 
 
-def create_tracker(frame, rect):
+def create_tracker(frame, rect, label):
   tracker = dlib.correlation_tracker()
   start_x, start_y, end_x, end_y = rect.rectangle_coords()
   rect = dlib.rectangle(start_x, start_y, end_x, end_y)
   tracker.start_track(frame, rect)
-  return tracker
+  return (tracker, label)
 
 
 def crop_image(frame, rectangle):
@@ -52,9 +52,9 @@ def merge_adjcent_predictions(predictions1, predictions2=None, overlap=0.4):
   merged_predictions = []
   if not predictions2:
     predictions2 = merged_predictions
-  for rect2 in predictions1:
+  for rect2,label2 in predictions1:
     should_skip = False
-    for rect1 in predictions2:
+    for rect1,_ in predictions2:
       intersection_rectangle = rect1.intersection(rect2)
       max_area = max(rect1.compute_area(), rect2.compute_area())
       ratio = intersection_rectangle.compute_area() / float(max_area)
@@ -62,7 +62,7 @@ def merge_adjcent_predictions(predictions1, predictions2=None, overlap=0.4):
         should_skip = True
         break
     if not should_skip:
-      merged_predictions.append(rect2)
+      merged_predictions.append((rect2, label2))
   return merged_predictions
 
 

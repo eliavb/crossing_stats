@@ -9,8 +9,8 @@ class Matcher(object):
   def __init__(self):
     self.available_id = 0
 
-  def create_new_tracker(self, frame, rect):
-    return utils.create_tracker(frame, rect)
+  def create_new_tracker(self, frame, rect, label):
+    return utils.create_tracker(frame, rect, label)
 
   def match(self, tracked_objects, new_rectangles, frame):
     """Matches tracked objects to detected objects.
@@ -26,8 +26,8 @@ class Matcher(object):
     """
     if not tracked_objects:
       object_by_id = {}
-      for rect in new_rectangles:
-        object_by_id[self.available_id] = self.create_new_tracker(frame, rect)
+      for rect, label in new_rectangles:
+        object_by_id[self.available_id] = self.create_new_tracker(frame, rect, label)
         self.available_id += 1
       return object_by_id
 
@@ -38,11 +38,11 @@ class Matcher(object):
     unmatched_tracked_ids = set(tracked_ids)
 
     tracked_objects_centers = [
-        utils.get_rect_from_tracker(tracked_objects[k]).centroid_coords()
+        utils.get_rect_from_tracker(tracked_objects[k][0]).centroid_coords()
         for k in tracked_ids
     ]
 
-    new_objects_centers = [rect.centroid_coords() for rect in new_rectangles]
+    new_objects_centers = [rect.centroid_coords() for rect,_ in new_rectangles]
     unmatched_new_objects = set(range(len(new_rectangles)))
 
     cost_matrix = cdist(tracked_objects_centers, new_objects_centers)
@@ -51,7 +51,7 @@ class Matcher(object):
       existing_id = tracked_ids[row]
       unmatched_tracked_ids.remove(existing_id)
       tracked_objects[existing_id] = self.create_new_tracker(
-          frame, new_rectangles[col])
+          frame, new_rectangles[col][0], tracked_objects[existing_id][1])
       unmatched_new_objects.remove(col)
 
     for unmatched_id in unmatched_tracked_ids:
@@ -59,7 +59,7 @@ class Matcher(object):
 
     for i in unmatched_new_objects:
       tracked_objects[self.available_id] = self.create_new_tracker(
-          frame, new_rectangles[i])
+          frame, new_rectangles[i][0],new_rectangles[i][1])
       self.available_id += 1
 
     return tracked_objects

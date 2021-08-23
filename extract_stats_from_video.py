@@ -5,7 +5,7 @@ import glob
 import os
 import pickle
 import time
-import time
+
 
 from common_types import Rectangle
 import counters
@@ -14,6 +14,7 @@ import detector
 import dlib
 import imutils
 from imutils.video import FPS
+
 import intersection_configuration
 from matcher import Matcher
 import numpy as np
@@ -94,14 +95,14 @@ def extract_rectangles_from_predictions(frame, dataset_name, detector_model,
   """Extracts rectangles from model predictions."""
   predictions = utils.compute_predictions(detector_model, frame, min_confidence,
                                           INTERESTING_LABELS)
-  predictions_rect = [utils.pred_to_rect(pred) for pred in predictions]
+  predictions_rect = [(utils.pred_to_rect(pred),pred['label']) for pred in predictions]
   # Merge adjcent objects as model may output multiple rectangles per object.
   predictions_rect = utils.merge_adjcent_predictions(predictions_rect)
   if intersection_configuration.DS_TO_SPECIFIC_PARAMS.get(dataset_name, None):
     focus_rect = intersection_configuration.DS_TO_SPECIFIC_PARAMS[dataset_name][
         intersection_configuration.DETECTION_BOUNDARIES]
     predictions_rect = [
-        rect for rect in predictions_rect
+        (rect,label) for rect,label in predictions_rect
         if utils.is_fully_contained_poly(rect, focus_rect)
     ]
 
@@ -134,7 +135,12 @@ def _create_dataset_counters(dataset_name):
     for t in intersection_configuration.DS_TO_SPECIFIC_PARAMS[dataset_name][
         intersection_configuration.COUNT_IN_AREA_UNIQUE]:
       name, y, poly = t
-      touch_line_counters.append(counters.AbsCounterTrackerUniq(name, y, poly))
+      touch_line_counters.append(counters.AbsCounterTrackerUniq(name+'_car', y, poly))
+      touch_line_counters.append(counters.AbsCounterTrackerUniq(name+'_motorbike', y, poly))
+      touch_line_counters.append(counters.AbsCounterTrackerUniq(name+'_truck', y, poly))
+      touch_line_counters.append(counters.AbsCounterTrackerUniq(name+'_bus', y, poly))
+
+    
   return abs_counter_rects, touch_line_counters
 
 
@@ -142,7 +148,7 @@ def _draw_detections(frame, tracker_by_id, dataset_name, abs_counter_rects,
                      touch_line_counters):
   """Draw detections on existing frame."""
   for id_, tracker in tracker_by_id.items():
-    rect = utils.get_rect_from_tracker(tracker)
+    rect = utils.get_rect_from_tracker(tracker[0])
     text_id = f"id={id_}"
     cv2.putText(frame, text_id, (rect.start_x, rect.start_y),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.40, TEXT_COLOR, 2)
@@ -152,7 +158,7 @@ def _draw_detections(frame, tracker_by_id, dataset_name, abs_counter_rects,
     for i, im_counter in enumerate(abs_counter_rects + touch_line_counters):
       s = " %s=%s " % (im_counter.name, im_counter.get_counter())
       cv2.putText(frame, s, (0, (i + 1) * 20), cv2.FONT_HERSHEY_SIMPLEX,
-                  0.40, TEXT_COLOR, 2)
+                  0.40, (255,255,255), 1)
 
     for t in intersection_configuration.DS_TO_SPECIFIC_PARAMS[dataset_name][
         intersection_configuration
@@ -198,10 +204,12 @@ def process_video(input_video_path, args):
   print(f"Frames per seconds {frames_per_second}")
   _, frame = vs.read()
 
+# set up detector (yolo) and init polygons (in dictionary for unique and not unique)
   detector_model = detector.detector_factory(args["model"])
   abs_counter_rects, touch_line_counters = _create_dataset_counters(
       dataset_name)
 
+# set image "main rect"
   image_rect = None
   if intersection_configuration.DS_TO_SPECIFIC_PARAMS.get(dataset_name, None):
     image_rect = intersection_configuration.DS_TO_SPECIFIC_PARAMS[dataset_name][
@@ -214,6 +222,8 @@ def process_video(input_video_path, args):
 
   matcher = Matcher()
   tracker_by_id = {}
+ 
+  
   # loop over the frames.
   total_frames = -1
   while True:
@@ -221,11 +231,13 @@ def process_video(input_video_path, args):
     _, frame = vs.read()
     if frame is None:
       break
-
     frame = imutils.resize(frame, width=args["frame_width"])
+    # frame = imutils.resize(frame, width=video_witdh)
     if image_rect is not None:
       frame = utils.crop_image(frame, image_rect)
-
+    
+    # add black rect
+    frame = cv2.rectangle(frame, (0,3),(188,200),(0,0,0),-1)
     if total_frames % args["frame_skip"] == 0:
       predictions_rect = extract_rectangles_from_predictions(
           frame, dataset_name, detector_model, args["confidence"])
@@ -233,12 +245,12 @@ def process_video(input_video_path, args):
     else:
       predictions_rect = []
       for tracker in tracker_by_id.values():
-        tracker.update(frame)
-        predictions_rect.append(utils.get_rect_from_tracker(tracker))
+        tracker[0].update(frame)
+        predictions_rect.append((utils.get_rect_from_tracker(tracker[0]),tracker[1]))
 
     tracker_by_id = {
         id_: tracker for id_, tracker in tracker_by_id.items()
-        if _is_inside_focus_zone(focus_rect, tracker)
+        if _is_inside_focus_zone(focus_rect, tracker[0])
     }
 
     for touch_line_counter in touch_line_counters:
@@ -248,13 +260,15 @@ def process_video(input_video_path, args):
       abs_counter.update(predictions_rect)
 
     for r in predictions_rect:
-      utils.draw_rect(frame, r, OUT_COLOR)
-
+      utils.draw_rect(frame, r[0], OUT_COLOR)
+    
     if args["display"]:
+    
       _draw_detections(frame, tracker_by_id, dataset_name, abs_counter_rects,
                        touch_line_counters)
-
+      
       cv2.imshow("frame", frame)
+      
       key = cv2.waitKey(1) & 0xFF
       if key == ord("q"):
         break
@@ -263,8 +277,10 @@ def process_video(input_video_path, args):
               frames_per_second)
 
   # close any open windows
-  cv2.destroyAllWindows()
+ 
+  
   vs.release()
+  cv2.destroyAllWindows()
 
 
 def main():
