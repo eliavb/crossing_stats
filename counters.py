@@ -21,7 +21,7 @@ class AbsCounterTrackerPoly(object):
   def update(self, rects):
     """Update counts with newly detected objects."""
     num_object_seen = 0
-    for rect in rects:
+    for rect,_ in rects:
       if rect.compute_area() == 0:
         # Model outliers.
         continue
@@ -53,9 +53,11 @@ class AbsCounterTrackerUniq(object):
   def update(self, tracker_by_id):
     """Update counts with newly detected objects."""
     for id_, tracker in tracker_by_id.items():
+      if self.name.split('_')[-1] != tracker[1]:
+        continue
       if id_ in self.counted_ids:
         continue
-      rect = utils.get_rect_from_tracker(tracker)
+      rect = utils.get_rect_from_tracker(tracker[0])
       if rect.compute_area() == 0:
         # Model outliers.
         continue
@@ -65,6 +67,7 @@ class AbsCounterTrackerUniq(object):
           self.polygon).area / rect.compute_area()
       if self.polygon.contains(
           center_point) or intersection_ratio > self.min_intersection_ratio:
+        
         self.num_object_seen += 1
         self.counted_ids.add(id_)
     self.count_series.append(self.num_object_seen)
