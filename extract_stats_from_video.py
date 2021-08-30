@@ -135,10 +135,9 @@ def _create_dataset_counters(dataset_name):
     for t in intersection_configuration.DS_TO_SPECIFIC_PARAMS[dataset_name][
         intersection_configuration.COUNT_IN_AREA_UNIQUE]:
       name, y, poly = t
-      touch_line_counters.append(counters.AbsCounterTrackerUniq(name+'_car', y, poly))
-      touch_line_counters.append(counters.AbsCounterTrackerUniq(name+'_motorbike', y, poly))
-      touch_line_counters.append(counters.AbsCounterTrackerUniq(name+'_truck', y, poly))
-      touch_line_counters.append(counters.AbsCounterTrackerUniq(name+'_bus', y, poly))
+      for counter_suffix in ['car','motorbike','truck','bus']:
+        touch_line_counters.append(counters.AbsCounterTrackerUniq(name + '_' + counter_suffix, y, poly))
+      
 
     
   return abs_counter_rects, touch_line_counters
@@ -158,7 +157,7 @@ def _draw_detections(frame, tracker_by_id, dataset_name, abs_counter_rects,
     for i, im_counter in enumerate(abs_counter_rects + touch_line_counters):
       s = " %s=%s " % (im_counter.name, im_counter.get_counter())
       cv2.putText(frame, s, (0, (i + 1) * 20), cv2.FONT_HERSHEY_SIMPLEX,
-                  0.40, (255,255,255), 1)
+                  0.40, TEXT_COLOR, 1)
 
     for t in intersection_configuration.DS_TO_SPECIFIC_PARAMS[dataset_name][
         intersection_configuration
@@ -236,17 +235,16 @@ def process_video(input_video_path, args):
     if image_rect is not None:
       frame = utils.crop_image(frame, image_rect)
     
-    # add black rect
-    frame = cv2.rectangle(frame, (0,3),(188,200),(0,0,0),-1)
+    
     if total_frames % args["frame_skip"] == 0:
       predictions_rect = extract_rectangles_from_predictions(
           frame, dataset_name, detector_model, args["confidence"])
       tracker_by_id = matcher.match(tracker_by_id, predictions_rect, frame)
     else:
       predictions_rect = []
-      for tracker in tracker_by_id.values():
-        tracker[0].update(frame)
-        predictions_rect.append((utils.get_rect_from_tracker(tracker[0]),tracker[1]))
+      for tracker, label in tracker_by_id.values():
+        tracker.update(frame)
+        predictions_rect.append((utils.get_rect_from_tracker(tracker),label))
 
     tracker_by_id = {
         id_: tracker for id_, tracker in tracker_by_id.items()
